@@ -1,0 +1,29 @@
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.card--border {
+  // border: thin solid #eee !important;
+  border-radius: 8px;
+  height: 100%;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.06) 0px 1px 2px 0px !important;
+}
+
+.chart-card {
+  &__title {
+    font-size: 1.125rem;
+  }
+}
+
+.stat-card {
+  &__title {
+    font-size: 0.9375rem;
+    color: #888888;
+  }
+
+  &__content {
+    font-size: 2.125rem;
+    color: #212121;
+  }
+}

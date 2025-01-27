@@ -1,7 +1,8 @@
 import type { IFilterItem } from '~/types/filter'
 import type { IProductSummary } from '~/types/stock.d'
 
-export function getStrDate(year: string, month: string): string {
+export function getStrDate(year: number, month?: number): string {
+  if (!month) return `${year}`
   return year + ('00' + month).slice(-2)
 }
 
@@ -9,13 +10,17 @@ export function findLogData(
   logs: string[][],
   year: number,
   month?: number,
-  productId?: string,
+  skuId?: string,
   cateId?: string
 ): IProductSummary[] {
-  const text = String(year) + (month ? String(month) : '')
+  if (month === -1) month = undefined
+  if (String(skuId) === '-1') skuId = undefined
+  if (String(cateId) === '-1') cateId = undefined
+
+  const text = getStrDate(year, month)
   const filtered = logs.filter((item) => {
-    const key = String(item[0]) + (month ? String(item[1]) : '')
-    return key === text && (!productId || productId === item[2]) && (!cateId || cateId === item[4])
+    const key = getStrDate(Number(item[0]), month ? Number(item[1]) : undefined)
+    return key === text && (!skuId || skuId === item[2]) && (!cateId || cateId === item[4])
   })
 
   return filtered.map((item) => ({
@@ -27,13 +32,13 @@ export function findLogData(
     lastQuantity: Number(item[6]),
     month: Number(item[1]),
     productName: item[3],
-    purchaseInventoryValue: Number(item[11]),
     purchaseQuantity: Number(item[10]),
-    saleInventoryValue: Number(item[13]),
+    purchaseTotal: Number(item[11]),
     saleQuantity: Number(item[12]),
+    saleTotal: Number(item[13]),
     sku: item[2],
     year: Number(item[0]),
-    yyyymm: getStrDate(item[0], item[1]),
+    yyyymm: getStrDate(Number(item[0]), Number(item[1])),
   }))
 }
 

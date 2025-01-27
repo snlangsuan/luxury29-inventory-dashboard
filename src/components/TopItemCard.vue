@@ -27,9 +27,8 @@
 <script setup lang="ts">
 import type { SeriesOption } from 'echarts'
 import type { PropType } from 'vue'
+import type { TTopViewMode } from '~/types/filter'
 import type { ITopItem } from '~/types/stock'
-
-type TTopMode = 'value' | 'quantity'
 
 const props = defineProps({
   height: {
@@ -39,6 +38,10 @@ const props = defineProps({
   items: {
     default: () => [],
     type: Array as PropType<ITopItem[]>,
+  },
+  mode: {
+    default: 'value',
+    type: String as PropType<TTopViewMode>,
   },
   titlePattern: {
     default: '',
@@ -50,7 +53,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['change'])
+const emit = defineEmits(['update:mode', 'change'])
 
 const chartOpt = ref<ECOption>({
   animation: true,
@@ -108,15 +111,24 @@ const chartOpt = ref<ECOption>({
         },
       },
       data: [],
+      inverse: true,
+      max: 9,
       type: 'category',
     },
   ],
 })
-const topMode = ref<TTopMode>('value')
+const topMode = computed({
+  get() {
+    return props.mode
+  },
+  set(mode: string) {
+    emit('update:mode', mode)
+  },
+})
 const widthValue = computed(() => (typeof props.width === 'number' ? `${props.width}px` : props.width))
 const heightValue = computed(() => (typeof props.height === 'number' ? `${props.height - 104}px` : props.height))
 const title = computed(() =>
-  props.titlePattern.replace('%s', String(topMode.value)[0].toUpperCase() + String(topMode.value).slice(1))
+  props.titlePattern.replace('%s', String(props.mode)[0].toUpperCase() + String(props.mode).slice(1))
 )
 
 watch(() => props.items, update, { deep: true })
@@ -133,7 +145,7 @@ function update() {
 }
 
 function handleOnChangeMode() {
-  emit('change', topMode.value)
+  emit('change')
 }
 
 defineExpose({ update })

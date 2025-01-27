@@ -6,7 +6,14 @@
         <v-spacer />
         <div>
           <div class="text-caption text-grey">Year</div>
-          <v-select v-model="yearSelected" :items="yearItems" width="200" mandatory hide-details />
+          <v-select
+            v-model="yearSelected"
+            :items="yearItems"
+            width="200"
+            mandatory
+            hide-details
+            @update:model-value="handleOnChangeYear"
+          />
         </div>
         <div>
           <div class="text-caption text-grey">Month</div>
@@ -27,6 +34,7 @@
             :menu-props="{ width: 400 }"
             mandatory
             hide-details
+            @update:model-value="handleOnChangeProduct"
           />
         </div>
         <div>
@@ -38,6 +46,7 @@
             :menu-props="{ width: 400 }"
             mandatory
             hide-details
+            @update:model-value="handleOnChangeCategory"
           />
         </div>
       </div>
@@ -56,13 +65,13 @@
       </div>
       <div class="dashboard__col">
         <stats-card
-          v-model="totalSkus"
+          v-model="totalSku"
           title="SKUs"
           icon="mdi-package-variant-closed"
           class="card--border"
           :width="cardWidth"
           :height="cardHeight"
-          :percent-change="totalSkusChange"
+          :percent-change="totalSkuChange"
         />
       </div>
       <div class="dashboard__col">
@@ -147,6 +156,7 @@
       </div>
       <div class="dashboard__col">
         <top-item-card
+          v-model:mode="topViewMode"
           title-pattern="Top 10 Item Based on %s"
           :items="topItems"
           width="100%"
@@ -161,8 +171,8 @@
 <script setup lang="ts">
 import dayjs from 'dayjs'
 import type { VContainer } from 'vuetify/components'
-import type { IFilterItem } from '~/types/filter'
-import type { IProductSummary, ITopItem } from '~/types/stock'
+import type { IFilterItem, TTopViewMode } from '~/types/filter'
+import type { ITopItem } from '~/types/stock'
 import LogoImage from '~/assets/images/logo.jpg'
 
 const sheetApi = useSheet()
@@ -286,8 +296,8 @@ const monthSelected = ref<number>(-1)
 const productSelected = ref<string | number>(-1)
 const categorySelected = ref<number>(-1)
 
-const totalSkus = ref<number>(0)
-const totalSkusChange = ref<number>(0)
+const totalSku = ref<number>(0)
+const totalSkuChange = ref<number>(0)
 
 const inventoryValue = ref<number>(0)
 const inventoryValueChange = ref<number>(0)
@@ -307,6 +317,7 @@ const inventoryPurchase = ref<number>()
 const inventorySale = ref<number>()
 
 const saleAmountItems = ref<number[]>([])
+const topViewMode = ref<TTopViewMode>('value')
 const topItems = ref<ITopItem[]>([])
 
 const monthsFilteredItems = computed(() =>
@@ -314,8 +325,6 @@ const monthsFilteredItems = computed(() =>
     ? shortMonthItems.value.map((item) => item.title)
     : shortMonthItems.value.filter((item) => item.value === monthSelected.value).map((item) => item.title)
 )
-
-function handleOnChangeMonth() {}
 
 function handleOnResize() {
   const padding = 6 * 16
@@ -329,104 +338,112 @@ function handleOnResize() {
   // }
 }
 
-function handleOnChangeTopItem(mode: string) {
-  if (mode === 'value') {
-    topItems.value = []
-  } else {
-    topItems.value = []
-  }
+function handleOnChangeTopItem() {
+  getTop10Items(logs.value, topViewMode.value, Number(yearSelected.value), Number(monthSelected.value))
 }
 
-function getInventoryValue(logs: string[][], year: number, month: number) {
-  const items = findLogData(logs, year, month)
-  const prevMonth = dayjs(`${year}-${('00' + month).slice(-2)}-01`).subtract(1, 'month')
+function getInventoryValue(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+  if (!maxMonth) {
+    inventoryValue.value = 0
+    inventoryValueChange.value = 0
+    return
+  }
+
+  const maxMonthItems = items.filter((item) => item.yyyymm === maxMonth.yyyymm)
+  const prevMonth = dayjs(`${maxMonth.yyyymm}-01`).subtract(1, 'month')
   const prevItems = findLogData(logs, prevMonth.year(), prevMonth.month() + 1)
 
-  const currentValue = items.reduce((sum, item) => sum + item.lastInventoryValue, 0)
+  const currentValue = maxMonthItems.reduce((sum, item) => sum + item.lastInventoryValue, 0)
   const lastValue = prevItems.reduce((sum, item) => sum + item.lastInventoryValue, 0)
-  const percentChange = (currentValue - lastValue) / lastValue
+  const percentChange = lastValue === 0 ? 0 : (currentValue - lastValue) / lastValue
   inventoryValue.value = currentValue
   inventoryValueChange.value = percentChange
 }
 
-function getCountSku(logs: string[][], year: number, month: number) {
-  const text = String(year) + String(month)
-  const items = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === text
-  })
+function getCountSku(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+  if (!maxMonth) {
+    totalSku.value = 0
+    totalSkuChange.value = 0
+    return
+  }
 
-  const prevMonth = dayjs(`${year}-${('00' + month).slice(-2)}-01`).subtract(1, 'month')
-  const prevText = prevMonth.format('YYYYM')
-  const prevItems = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === prevText
-  })
+  const maxMonthItems = items.filter((item) => item.yyyymm === maxMonth.yyyymm)
+  const prevMonth = dayjs(`${maxMonth.yyyymm}-01`).subtract(1, 'month')
+  const prevItems = findLogData(logs, prevMonth.year(), prevMonth.month() + 1)
 
-  const currentValue = items.reduce(
-    (unique, item) => (unique.includes(item[2]) ? unique : [...unique, item[2]]),
+  const currentValue = maxMonthItems.reduce(
+    (unique, item) => (unique.includes(item.sku) ? unique : [...unique, item.sku]),
     [] as string[]
   )
   const lastValue = prevItems.reduce(
-    (unique, item) => (unique.includes(item[2]) ? unique : [...unique, item[2]]),
+    (unique, item) => (unique.includes(item.sku) ? unique : [...unique, item.sku]),
     [] as string[]
   )
-  const percentChange = (currentValue.length - lastValue.length) / lastValue.length
-  totalSkus.value = currentValue.length
-  totalSkusChange.value = percentChange
+  const percentChange = lastValue.length === 0 ? 0 : (currentValue.length - lastValue.length) / lastValue.length
+  totalSku.value = currentValue.length
+  totalSkuChange.value = percentChange
 }
 
-function getStockAvailable(logs: string[][], year: number, month: number) {
-  const text = String(year) + String(month)
-  const items = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === text
-  })
+function getStockAvailable(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+  if (!maxMonth) {
+    stockAvailable.value = 0
+    stockAvailableChange.value = 0
+    return
+  }
 
-  const prevMonth = dayjs(`${year}-${('00' + month).slice(-2)}-01`).subtract(1, 'month')
-  const prevText = prevMonth.format('YYYYM')
-  const prevItems = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === prevText
-  })
+  const maxMonthItems = items.filter((item) => item.yyyymm === maxMonth.yyyymm)
+  const prevMonth = dayjs(`${maxMonth.yyyymm}-01`).subtract(1, 'month')
+  const prevItems = findLogData(logs, prevMonth.year(), prevMonth.month() + 1)
 
-  const currentValue = items.reduce((sum, item) => sum + Number(item[4]), 0)
-  const lastValue = prevItems.reduce((sum, item) => sum + Number(item[4]), 0)
-  const percentChange = (currentValue - lastValue) / lastValue
+  const currentValue = maxMonthItems.reduce((sum, item) => sum + item.lastQuantity, 0)
+  const lastValue = prevItems.reduce((sum, item) => sum + item.lastQuantity, 0)
+  const percentChange = lastValue === 0 ? 0 : (currentValue - lastValue) / lastValue
   stockAvailable.value = currentValue
   stockAvailableChange.value = percentChange
 }
 
-function getInventoryMovement(logs: string[][], year: number, month?: number) {
-  const text = String(year) + (month ? String(month) : '')
-  const filtered = logs.filter((item) => {
-    const key = String(item[0]) + (month ? String(item[1]) : '')
-    return key === text
-  })
-  const purchase = filtered.reduce((sum, item) => sum + Number(item[9]), 0)
-  const sale = filtered.reduce((sum, item) => sum + Number(item[11]), 0)
+function getInventoryMovement(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const purchase = items.reduce((sum, item) => sum + item.purchaseTotal, 0)
+  const sale = items.reduce((sum, item) => sum + item.saleTotal, 0)
   inventoryPurchase.value = purchase
   inventorySale.value = sale * -1
 }
 
-function getTop10Items(logs: string[][], mode: string, year: number) {
-  const sortKey = mode === 'quantity' ? 4 : 5
-  const sortItems = logs.sort((a, b) => Number(b[sortKey]) - Number(a[sortKey]))
-  const top10 = sortItems.slice(0, 10)
-  topItems.value = top10.map((item) => ({ id: item[2], name: item[3], value: Number(item[sortKey]) }))
+function getTop10Items(
+  logs: string[][],
+  mode: TTopViewMode,
+  year: number,
+  month?: number,
+  skuId?: string,
+  cateId?: string
+) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+  if (!maxMonth) {
+    topItems.value = []
+    return
+  }
+
+  const sortKey = mode === 'quantity' ? 'lastQuantity' : 'lastInventoryValue'
+  const maxMonthItems = items.filter((item) => item.yyyymm === maxMonth.yyyymm).sort((a, b) => b[sortKey] - a[sortKey])
+  const top10 = maxMonthItems.slice(0, 10)
+  topItems.value = top10.map((item) => ({ id: item.sku, name: item.productName, value: item[sortKey] }))
 }
 
-function getInventoryValueOverTime(logs: string[][], year: number, month?: number) {
-  const text = getStrDate(String(year), month ? String(month) : '')
-  const filtered = logs.filter((item) => {
-    const key = getStrDate(String(item[0]), month ? String(item[1]) : '')
-    return key === text
-  })
-  const stats = filtered.reduce(
+function getInventoryValueOverTime(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const stats = items.reduce(
     (items, item) => {
-      const d = getStrDate(String(item[0]), String(item[1]))
+      const d = item.yyyymm
       if (!items[d]) items[d] = 0
-      items[d] += Number(item[5])
+      items[d] += item.lastInventoryValue
       return items
     },
     {} as Record<string, number>
@@ -437,29 +454,19 @@ function getInventoryValueOverTime(logs: string[][], year: number, month?: numbe
   let lastValue = 0
   inventoryValueChangeItems.value = statDates.map((key) => {
     const val = stats[key]
-    const change = val - lastValue
+    const change = lastValue === 0 ? 0 : val - lastValue
     lastValue = val
     return change
   })
-
-  const maxDate = statDates[statDates.length - 1]
-  getTop10Items(
-    filtered.filter((item) => getStrDate(String(item[0]), String(item[1])) === maxDate),
-    'value'
-  )
 }
 
-function getSaleAmountOverTime(logs: string[][], year: number, month?: number) {
-  const text = String(year) + (month ? String(month) : '')
-  const filtered = logs.filter((item) => {
-    const key = String(item[0]) + (month ? String(item[1]) : '')
-    return key === text
-  })
-  const stats = filtered.reduce(
+function getSaleAmountOverTime(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId)
+  const stats = items.reduce(
     (items, item) => {
-      const d = String(item[0]) + ('00' + String(item[1])).slice(-2)
+      const d = item.yyyymm
       if (!items[d]) items[d] = 0
-      items[d] += Number(item[11])
+      items[d] += item.saleTotal
       return items
     },
     {} as Record<string, number>
@@ -468,74 +475,95 @@ function getSaleAmountOverTime(logs: string[][], year: number, month?: number) {
   saleAmountItems.value = statDates.map((key) => stats[key])
 }
 
-function getInventoryToSaleRatio(logs: string[][], year: number, month?: number) {
-  const text = getStrDate(String(year), month ? String(month) : '')
-  const filtered = logs
-    .filter((item) => {
-      const key = getStrDate(String(item[0]), month ? String(item[1]) : '')
-      return key === text
-    })
-    .sort((a, b) => ('' + getStrDate(a[0], a[1])).localeCompare(getStrDate(b[0], b[1])))
-  const beginDate = getStrDate(filtered[0][0], filtered[0][1])
-  const beginValue = filtered
-    .filter((item) => beginDate === getStrDate(String(item[0]), String(item[1])))
-    .reduce((sum, item) => sum + Number(item[7]), 0)
-  const lastDate = filtered[filtered.length - 1][0] + filtered[filtered.length - 1][1]
-  const lastValue = filtered
-    .filter((item) => lastDate === getStrDate(String(item[0]), String(item[1])))
-    .reduce((sum, item) => sum + Number(item[5]), 0)
+function getInventoryToSaleRatio(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
+  const minMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[0]
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+
+  if (!minMonth || !maxMonth) {
+    inventorySalesRatio.value = 0
+    return
+  }
+
+  const beginDate = minMonth.yyyymm
+  const beginValue = items
+    .filter((item) => item.yyyymm === beginDate)
+    .reduce((sum, item) => sum + item.beginInventoryValue, 0)
+
+  const lastDate = maxMonth.yyyymm
+  const lastValue = items
+    .filter((item) => item.yyyymm === lastDate)
+    .reduce((sum, item) => sum + item.lastInventoryValue, 0)
+
   const avgInventory = (beginValue + lastValue) / 2
-  const saleValue = filtered.reduce((sum, item) => sum + Number(item[11]), 0)
-  inventorySalesRatio.value = avgInventory / saleValue
+  const saleValue = items.reduce((sum, item) => sum + item.saleTotal, 0)
+  inventorySalesRatio.value = saleValue === 0 ? 0 : avgInventory / saleValue
 }
 
-function getTurnover(logs: string[][], year: number, month?: number) {
-  const text = getStrDate(String(year), month ? String(month) : '')
-  const filtered = logs
-    .filter((item) => {
-      const key = getStrDate(String(item[0]), month ? String(item[1]) : '')
-      return key === text
-    })
-    .sort((a, b) => ('' + getStrDate(a[0], a[1])).localeCompare(getStrDate(b[0], b[1])))
-  const beginDate = getStrDate(filtered[0][0], filtered[0][1])
-  const beginValue = filtered
-    .filter((item) => beginDate === getStrDate(String(item[0]), String(item[1])))
-    .reduce((sum, item) => sum + Number(item[7]), 0)
-  const lastDate = filtered[filtered.length - 1][0] + filtered[filtered.length - 1][1]
-  const lastValue = filtered
-    .filter((item) => lastDate === getStrDate(String(item[0]), String(item[1])))
-    .reduce((sum, item) => sum + Number(item[5]), 0)
-  const purchaseValue = filtered.reduce((sum, item) => sum + Number(item[9]), 0)
+function getTurnover(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
+  const minMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[0]
+  const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
+
+  if (!minMonth || !maxMonth) {
+    inventorySalesRatio.value = 0
+    return
+  }
+
+  const beginDate = minMonth.yyyymm
+  const beginValue = items
+    .filter((item) => item.yyyymm === beginDate)
+    .reduce((sum, item) => sum + item.beginInventoryValue, 0)
+
+  const lastDate = maxMonth.yyyymm
+  const lastValue = items
+    .filter((item) => item.yyyymm === lastDate)
+    .reduce((sum, item) => sum + item.lastInventoryValue, 0)
+
+  const purchaseValue = items.reduce((sum, item) => sum + item.purchaseTotal, 0)
   const cogs = beginValue + purchaseValue - lastValue
   const argInventory = (beginValue + lastValue) / 2
-  turnoverRatio.value = cogs / argInventory
+  turnoverRatio.value = argInventory == 0 ? 0 : cogs / argInventory
 }
 
-function getTurnoverByMonth(logs: string[][], year: number, month?: number) {
-  const text = getStrDate(String(year), month ? String(month) : '')
-  const filtered = logs
-    .filter((item) => {
-      const key = getStrDate(String(item[0]), month ? String(item[1]) : '')
-      return key === text
-    })
-    .sort((a, b) => ('' + getStrDate(a[0], a[1])).localeCompare(getStrDate(b[0], b[1])))
+function getTurnoverByMonth(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
 
-  const stats = filtered.reduce(
+  const stats = items.reduce(
     (items, item) => {
-      const key = getStrDate(String(item[0]), String(item[1]))
-      if (!items[key]) items[key] = [0, 0, 0, 0]
-      items[key][0] += Number(item[7])
-      items[key][1] += Number(item[5])
-      items[key][2] += Number(item[9])
-      items[key][3] += Number(item[11])
+      const key = item.yyyymm
+      if (!items[key]) items[key] = { end: 0, purchase: 0, sale: 0, start: 0 }
+      items[key].start += item.beginInventoryValue
+      items[key].end += item.lastInventoryValue
+      items[key].purchase += item.purchaseTotal
+      items[key].sale += item.saleTotal
       return items
     },
-    {} as Record<string, number[]>
+    {} as Record<string, { end: number; purchase: number; sale: number; start: number }>
   )
-  const items = Object.keys(stats)
+  turnoverItems.value = Object.keys(stats)
     .sort((a, b) => a.localeCompare(b))
-    .map((key) => ((stats[key][0] + stats[key][1]) / 2 / (stats[key][0] + stats[key][2] - stats[key][1])) * 30)
-  turnoverItems.value = items
+    .map(
+      (key) =>
+        ((stats[key].start + stats[key].end) / 2 / (stats[key].start + stats[key].purchase - stats[key].end)) * 30
+    )
+}
+
+function update() {
+  const year = Number(yearSelected.value)
+  const month = Number(monthSelected.value)
+  const skuId = String(productSelected.value)
+  const cateId = String(categorySelected.value)
+  getInventoryValue(logs.value, year, month, skuId, cateId)
+  getCountSku(logs.value, year, month, skuId, cateId)
+  getStockAvailable(logs.value, year, month, skuId, cateId)
+  getTop10Items(logs.value, topViewMode.value, year, month, skuId, cateId)
+  getInventoryMovement(logs.value, year, month, skuId, cateId)
+  getInventoryValueOverTime(logs.value, year, month, skuId, cateId)
+  getSaleAmountOverTime(logs.value, year, month, skuId, cateId)
+  getInventoryToSaleRatio(logs.value, year, month, skuId, cateId)
+  getTurnover(logs.value, year, month, skuId, cateId)
+  getTurnoverByMonth(logs.value, year, month, skuId, cateId)
 }
 
 async function handleOnInit() {
@@ -555,6 +583,22 @@ async function handleOnInit() {
   getInventoryToSaleRatio(summary, year)
   getTurnover(summary, year)
   getTurnoverByMonth(summary, year)
+  getTop10Items(summary, 'value', year)
+}
+
+function handleOnChangeYear() {
+  update()
+}
+function handleOnChangeMonth() {
+  update()
+}
+
+function handleOnChangeProduct() {
+  update()
+}
+
+function handleOnChangeCategory() {
+  update()
 }
 
 onMounted(() => {

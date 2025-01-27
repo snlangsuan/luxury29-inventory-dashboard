@@ -9,7 +9,7 @@ export const useSheet = () => {
   }
 
   const loadSummaryData = async (): Promise<string[][]> => {
-    const res = await getData('mock_summary!A2:M')
+    const res = await getData('mock_summary!A2:N')
     return res
   }
 

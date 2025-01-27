@@ -13,10 +13,10 @@ export interface IProductSummary {
   lastQuantity: number
   month: number
   productName: string
-  purchaseInventoryValue: number
   purchaseQuantity: number
-  saleInventoryValue: number
+  purchaseTotal: number
   saleQuantity: number
+  saleTotal: number
   sku: string
   year: number
   yyyymm: string

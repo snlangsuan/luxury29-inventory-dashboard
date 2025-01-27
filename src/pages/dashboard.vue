@@ -162,7 +162,7 @@
 import dayjs from 'dayjs'
 import type { VContainer } from 'vuetify/components'
 import type { IFilterItem } from '~/types/filter'
-import type { ITopItem } from '~/types/stock'
+import type { IProductSummary, ITopItem } from '~/types/stock'
 import LogoImage from '~/assets/images/logo.jpg'
 
 const sheetApi = useSheet()
@@ -331,103 +331,19 @@ function handleOnResize() {
 
 function handleOnChangeTopItem(mode: string) {
   if (mode === 'value') {
-    topItems.value = [
-      {
-        id: '0620003500-N40753-02-0039',
-        name: 'LV Trousse Toilette Locker Dopp Kit Blue',
-        value: 64900 * 10,
-      },
-      {
-        id: '0609003500-M02214-08-0039',
-        name: 'LV x Vivienne Xmas Bag Charm And Key Holder',
-        value: 41900 * 20,
-      },
-      {
-        id: '0601003500-M8962U-01-0001',
-        name: 'LV Dimension 40MM Reversible Bel Monogram coated canvas strap, leather reverse Monogram Eclipse',
-        value: 29900 * 30,
-      },
-      {
-        id: '0625009400-DSL-90014-15-0043',
-        name: "Gallery Dept. 'DEPT SOCKS' White",
-        value: 3000 * 10,
-      },
-      {
-        id: '0609003900-5NR036AF8WF0NBL-03-0038',
-        name: 'Miu Miu Leather Trick In Radica',
-        value: 54999 * 5,
-      },
-    ]
+    topItems.value = []
   } else {
-    topItems.value = [
-      {
-        id: '0620003500-N40753-02-0039',
-        name: 'LV Trousse Toilette Locker Dopp Kit Blue',
-        value: 10,
-      },
-      {
-        id: '0609003500-M02214-08-0039',
-        name: 'LV x Vivienne Xmas Bag Charm And Key Holder',
-        value: 20,
-      },
-      {
-        id: '0601003500-M8962U-01-0001',
-        name: 'LV Dimension 40MM Reversible Bel Monogram coated canvas strap, leather reverse Monogram Eclipse',
-        value: 30,
-      },
-      {
-        id: '0625009400-DSL-90014-15-0043',
-        name: "Gallery Dept. 'DEPT SOCKS' White",
-        value: 10,
-      },
-      {
-        id: '0609003900-5NR036AF8WF0NBL-03-0038',
-        name: 'Miu Miu Leather Trick In Radica',
-        value: 5,
-      },
-    ]
+    topItems.value = []
   }
 }
 
-function parseYear(logs: string[][]): IFilterItem[] {
-  return logs.reduce((items, item) => {
-    const exists = items.find((x) => x.value === item[0])
-    if (!exists) items.push({ title: item[0], value: item[0] })
-    return items
-  }, [] as IFilterItem[])
-}
-
-function parseProduct(logs: string[][]): IFilterItem[] {
-  return logs.reduce((items, item) => {
-    const exists = items.find((x) => x.value === item[0])
-    if (!exists) items.push({ title: item[1], value: item[0] })
-    return items
-  }, [] as IFilterItem[])
-}
-
-function parseCategory(logs: string[][]): IFilterItem[] {
-  return logs.reduce((items, item) => {
-    const exists = items.find((x) => x.value === item[2])
-    if (!exists) items.push({ title: item[3], value: item[2] })
-    return items
-  }, [] as IFilterItem[])
-}
-
 function getInventoryValue(logs: string[][], year: number, month: number) {
-  const text = String(year) + String(month)
-  const items = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === text
-  })
+  const items = findLogData(logs, year, month)
   const prevMonth = dayjs(`${year}-${('00' + month).slice(-2)}-01`).subtract(1, 'month')
-  const prevText = prevMonth.format('YYYYM')
-  const prevItems = logs.filter((item) => {
-    const key = String(item[0]) + String(item[1])
-    return key === prevText
-  })
+  const prevItems = findLogData(logs, prevMonth.year(), prevMonth.month() + 1)
 
-  const currentValue = items.reduce((sum, item) => sum + Number(item[5]), 0)
-  const lastValue = prevItems.reduce((sum, item) => sum + Number(item[5]), 0)
+  const currentValue = items.reduce((sum, item) => sum + item.lastInventoryValue, 0)
+  const lastValue = prevItems.reduce((sum, item) => sum + item.lastInventoryValue, 0)
   const percentChange = (currentValue - lastValue) / lastValue
   inventoryValue.value = currentValue
   inventoryValueChange.value = percentChange
@@ -493,34 +409,44 @@ function getInventoryMovement(logs: string[][], year: number, month?: number) {
   inventorySale.value = sale * -1
 }
 
+function getTop10Items(logs: string[][], mode: string, year: number) {
+  const sortKey = mode === 'quantity' ? 4 : 5
+  const sortItems = logs.sort((a, b) => Number(b[sortKey]) - Number(a[sortKey]))
+  const top10 = sortItems.slice(0, 10)
+  topItems.value = top10.map((item) => ({ id: item[2], name: item[3], value: Number(item[sortKey]) }))
+}
+
 function getInventoryValueOverTime(logs: string[][], year: number, month?: number) {
-  const text = String(year) + (month ? String(month) : '')
+  const text = getStrDate(String(year), month ? String(month) : '')
   const filtered = logs.filter((item) => {
-    const key = String(item[0]) + (month ? String(item[1]) : '')
+    const key = getStrDate(String(item[0]), month ? String(item[1]) : '')
     return key === text
   })
   const stats = filtered.reduce(
     (items, item) => {
-      const d = String(item[0]) + ('00' + String(item[1])).slice(-2)
+      const d = getStrDate(String(item[0]), String(item[1]))
       if (!items[d]) items[d] = 0
       items[d] += Number(item[5])
       return items
     },
     {} as Record<string, number>
   )
-  inventoryValueItems.value = Object.keys(stats)
-    .sort()
-    .map((key) => stats[key])
+  const statDates = Object.keys(stats).sort((a, b) => a.localeCompare(b))
+  inventoryValueItems.value = statDates.map((key) => stats[key])
 
   let lastValue = 0
-  inventoryValueChangeItems.value = Object.keys(stats)
-    .sort()
-    .map((key) => {
-      const val = stats[key]
-      const change = val - lastValue
-      lastValue = val
-      return change
-    })
+  inventoryValueChangeItems.value = statDates.map((key) => {
+    const val = stats[key]
+    const change = val - lastValue
+    lastValue = val
+    return change
+  })
+
+  const maxDate = statDates[statDates.length - 1]
+  getTop10Items(
+    filtered.filter((item) => getStrDate(String(item[0]), String(item[1])) === maxDate),
+    'value'
+  )
 }
 
 function getSaleAmountOverTime(logs: string[][], year: number, month?: number) {
@@ -538,13 +464,8 @@ function getSaleAmountOverTime(logs: string[][], year: number, month?: number) {
     },
     {} as Record<string, number>
   )
-  saleAmountItems.value = Object.keys(stats)
-    .sort()
-    .map((key) => stats[key])
-}
-
-function getStrDate(year: string, month: string): string {
-  return year + ('00' + month).slice(-2)
+  const statDates = Object.keys(stats).sort((a, b) => a.localeCompare(b))
+  saleAmountItems.value = statDates.map((key) => stats[key])
 }
 
 function getInventoryToSaleRatio(logs: string[][], year: number, month?: number) {
@@ -620,9 +541,9 @@ function getTurnoverByMonth(logs: string[][], year: number, month?: number) {
 async function handleOnInit() {
   const [summary, product] = await Promise.all([sheetApi.loadSummaryData(), sheetApi.loadProductData()])
   logs.value = summary
-  yearItems.value = parseYear(summary)
-  productItems.value = [selectAllItem, ...parseProduct(product)]
-  categoryItems.value = [selectAllItem, ...parseCategory(product)]
+  yearItems.value = getUniqueYear(summary)
+  productItems.value = [selectAllItem, ...getUniqueProduct(product)]
+  categoryItems.value = [selectAllItem, ...getUniqueCategory(product)]
   const year = lastMonth.year()
   const month = lastMonth.month() + 1
   getInventoryValue(summary, year, month)

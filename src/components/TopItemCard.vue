@@ -108,7 +108,6 @@ const chartOpt = ref<ECOption>({
         },
       },
       data: [],
-      max: 10,
       type: 'category',
     },
   ],

@@ -172,14 +172,14 @@
 import dayjs from 'dayjs'
 import type { VContainer } from 'vuetify/components'
 import type { IFilterItem, TTopViewMode } from '~/types/filter'
-import type { ITopItem } from '~/types/stock'
+import type { IProductSummary, ITopItem } from '~/types/stock'
 import LogoImage from '~/assets/images/logo.jpg'
 
 const sheetApi = useSheet()
 
 const selectAllItem: IFilterItem = { title: 'All', value: -1 }
 
-const logs = ref<string[][]>([])
+const logs = ref<IProductSummary[]>([])
 
 const yearItems = ref<IFilterItem[]>([])
 const monthItems = ref<IFilterItem[]>([
@@ -320,11 +320,7 @@ const saleAmountItems = ref<number[]>([])
 const topViewMode = ref<TTopViewMode>('value')
 const topItems = ref<ITopItem[]>([])
 
-const monthsFilteredItems = computed(() =>
-  monthSelected.value < 1
-    ? shortMonthItems.value.map((item) => item.title)
-    : shortMonthItems.value.filter((item) => item.value === monthSelected.value).map((item) => item.title)
-)
+const monthsFilteredItems = computed(() => shortMonthItems.value.map((item) => item.title))
 
 function handleOnResize() {
   const padding = 6 * 16
@@ -342,7 +338,7 @@ function handleOnChangeTopItem() {
   getTop10Items(logs.value, topViewMode.value, Number(yearSelected.value), Number(monthSelected.value))
 }
 
-function getInventoryValue(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+function getInventoryValue(logs: IProductSummary[], year: number, month: number, skuId?: string, cateId?: string) {
   const items = findLogData(logs, year, month, skuId, cateId)
   const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
   if (!maxMonth) {
@@ -362,7 +358,7 @@ function getInventoryValue(logs: string[][], year: number, month: number, skuId?
   inventoryValueChange.value = percentChange
 }
 
-function getCountSku(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+function getCountSku(logs: IProductSummary[], year: number, month: number, skuId?: string, cateId?: string) {
   const items = findLogData(logs, year, month, skuId, cateId)
   const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
   if (!maxMonth) {
@@ -388,7 +384,7 @@ function getCountSku(logs: string[][], year: number, month: number, skuId?: stri
   totalSkuChange.value = percentChange
 }
 
-function getStockAvailable(logs: string[][], year: number, month: number, skuId?: string, cateId?: string) {
+function getStockAvailable(logs: IProductSummary[], year: number, month: number, skuId?: string, cateId?: string) {
   const items = findLogData(logs, year, month, skuId, cateId)
   const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
   if (!maxMonth) {
@@ -408,7 +404,7 @@ function getStockAvailable(logs: string[][], year: number, month: number, skuId?
   stockAvailableChange.value = percentChange
 }
 
-function getInventoryMovement(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+function getInventoryMovement(logs: IProductSummary[], year: number, month?: number, skuId?: string, cateId?: string) {
   const items = findLogData(logs, year, month, skuId, cateId)
   const purchase = items.reduce((sum, item) => sum + item.purchaseTotal, 0)
   const sale = items.reduce((sum, item) => sum + item.saleTotal, 0)
@@ -417,7 +413,7 @@ function getInventoryMovement(logs: string[][], year: number, month?: number, sk
 }
 
 function getTop10Items(
-  logs: string[][],
+  logs: IProductSummary[],
   mode: TTopViewMode,
   year: number,
   month?: number,
@@ -437,8 +433,14 @@ function getTop10Items(
   topItems.value = top10.map((item) => ({ id: item.sku, name: item.productName, value: item[sortKey] }))
 }
 
-function getInventoryValueOverTime(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
-  const items = findLogData(logs, year, month, skuId, cateId)
+function getInventoryValueOverTime(
+  logs: IProductSummary[],
+  year: number,
+  month?: number,
+  skuId?: string,
+  cateId?: string
+) {
+  const items = findLogData(logs, year, undefined, skuId, cateId)
   const stats = items.reduce(
     (items, item) => {
       const d = item.yyyymm
@@ -458,10 +460,19 @@ function getInventoryValueOverTime(logs: string[][], year: number, month?: numbe
     lastValue = val
     return change
   })
+
+  if (month && month > 0) {
+    for (let i = 0; i < inventoryValueItems.value.length; i++) {
+      if (i + 1 !== month) {
+        inventoryValueItems.value[i] = 0
+        inventoryValueChangeItems.value[i] = 0
+      }
+    }
+  }
 }
 
-function getSaleAmountOverTime(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
-  const items = findLogData(logs, year, month, skuId, cateId)
+function getSaleAmountOverTime(logs: IProductSummary[], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, undefined, skuId, cateId)
   const stats = items.reduce(
     (items, item) => {
       const d = item.yyyymm
@@ -473,9 +484,23 @@ function getSaleAmountOverTime(logs: string[][], year: number, month?: number, s
   )
   const statDates = Object.keys(stats).sort((a, b) => a.localeCompare(b))
   saleAmountItems.value = statDates.map((key) => stats[key])
+
+  if (month && month > 0) {
+    for (let i = 0; i < saleAmountItems.value.length; i++) {
+      if (i + 1 !== month) {
+        saleAmountItems.value[i] = 0
+      }
+    }
+  }
 }
 
-function getInventoryToSaleRatio(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+function getInventoryToSaleRatio(
+  logs: IProductSummary[],
+  year: number,
+  month?: number,
+  skuId?: string,
+  cateId?: string
+) {
   const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
   const minMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[0]
   const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
@@ -500,7 +525,7 @@ function getInventoryToSaleRatio(logs: string[][], year: number, month?: number,
   inventorySalesRatio.value = saleValue === 0 ? 0 : avgInventory / saleValue
 }
 
-function getTurnover(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
+function getTurnover(logs: IProductSummary[], year: number, month?: number, skuId?: string, cateId?: string) {
   const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
   const minMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[0]
   const maxMonth = items.sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))[items.length - 1]
@@ -526,8 +551,8 @@ function getTurnover(logs: string[][], year: number, month?: number, skuId?: str
   turnoverRatio.value = argInventory == 0 ? 0 : cogs / argInventory
 }
 
-function getTurnoverByMonth(logs: string[][], year: number, month?: number, skuId?: string, cateId?: string) {
-  const items = findLogData(logs, year, month, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
+function getTurnoverByMonth(logs: IProductSummary[], year: number, month?: number, skuId?: string, cateId?: string) {
+  const items = findLogData(logs, year, undefined, skuId, cateId).sort((a, b) => a.yyyymm.localeCompare(b.yyyymm))
 
   const stats = items.reduce(
     (items, item) => {
@@ -547,6 +572,14 @@ function getTurnoverByMonth(logs: string[][], year: number, month?: number, skuI
       (key) =>
         ((stats[key].start + stats[key].end) / 2 / (stats[key].start + stats[key].purchase - stats[key].end)) * 30
     )
+
+  if (month && month > 0) {
+    for (let i = 0; i < turnoverItems.value.length; i++) {
+      if (i + 1 !== month) {
+        turnoverItems.value[i] = 0
+      }
+    }
+  }
 }
 
 function update() {
@@ -568,22 +601,22 @@ function update() {
 
 async function handleOnInit() {
   const [summary, product] = await Promise.all([sheetApi.loadSummaryData(), sheetApi.loadProductData()])
-  logs.value = summary
+  logs.value = parseLogData(summary)
   yearItems.value = getUniqueYear(summary)
   productItems.value = [selectAllItem, ...getUniqueProduct(product)]
   categoryItems.value = [selectAllItem, ...getUniqueCategory(product)]
   const year = lastMonth.year()
   const month = lastMonth.month() + 1
-  getInventoryValue(summary, year, month)
-  getCountSku(summary, year, month)
-  getStockAvailable(summary, year, month)
-  getInventoryMovement(summary, year)
-  getInventoryValueOverTime(summary, year)
-  getSaleAmountOverTime(summary, year)
-  getInventoryToSaleRatio(summary, year)
-  getTurnover(summary, year)
-  getTurnoverByMonth(summary, year)
-  getTop10Items(summary, 'value', year)
+  getInventoryValue(logs.value, year, month)
+  getCountSku(logs.value, year, month)
+  getStockAvailable(logs.value, year, month)
+  getInventoryMovement(logs.value, year)
+  getInventoryValueOverTime(logs.value, year)
+  getSaleAmountOverTime(logs.value, year)
+  getInventoryToSaleRatio(logs.value, year)
+  getTurnover(logs.value, year)
+  getTurnoverByMonth(logs.value, year)
+  getTop10Items(logs.value, 'value', year)
 }
 
 function handleOnChangeYear() {

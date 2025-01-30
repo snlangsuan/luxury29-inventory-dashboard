@@ -6,24 +6,8 @@ export function getStrDate(year: number, month?: number): string {
   return year + ('00' + month).slice(-2)
 }
 
-export function findLogData(
-  logs: string[][],
-  year: number,
-  month?: number,
-  skuId?: string,
-  cateId?: string
-): IProductSummary[] {
-  if (month === -1) month = undefined
-  if (String(skuId) === '-1') skuId = undefined
-  if (String(cateId) === '-1') cateId = undefined
-
-  const text = getStrDate(year, month)
-  const filtered = logs.filter((item) => {
-    const key = getStrDate(Number(item[0]), month ? Number(item[1]) : undefined)
-    return key === text && (!skuId || skuId === item[2]) && (!cateId || cateId === item[4])
-  })
-
-  return filtered.map((item) => ({
+export function parseLogData(logs: string[][]) {
+  return logs.map((item) => ({
     beginInventoryValue: Number(item[9]),
     beginQuantity: Number(item[8]),
     cateId: item[4],
@@ -40,6 +24,26 @@ export function findLogData(
     year: Number(item[0]),
     yyyymm: getStrDate(Number(item[0]), Number(item[1])),
   }))
+}
+
+export function findLogData(
+  logs: IProductSummary[],
+  year: number,
+  month?: number,
+  skuId?: string,
+  cateId?: string
+): IProductSummary[] {
+  if (month === -1) month = undefined
+  if (String(skuId) === '-1') skuId = undefined
+  if (String(cateId) === '-1') cateId = undefined
+
+  const text = getStrDate(year, month)
+  const filtered = logs.filter((item) => {
+    const key = getStrDate(item.year, month ? item.month : undefined)
+    return key === text && (!skuId || skuId === item.sku) && (!cateId || cateId === item.cateId)
+  })
+
+  return filtered
 }
 
 export function getUniqueYear(logs: string[][]): IFilterItem[] {

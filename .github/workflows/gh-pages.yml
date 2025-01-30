@@ -20,6 +20,7 @@ jobs:
       - run: yarn
       - run: NUXT_APP_BASE_URL=/luxury29-inventory-dashboard/ npx nuxt build --preset github_pages
       - name: Upload artifact
+        id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./.output/public
